@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>邮储银行柜面业务OCR识别</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #1a5f7a 0%, #2c3e50 100%);
+            color: #333;
+            min-height: 100vh;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 1.8rem;
+            margin-bottom: 5px;
+        }
+        
+        .header p {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        .camera-container {
+            width: 100%;
+            max-width: 800px;
+            margin: 0 auto 25px;
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            background: #000;
+            height: 400px;
+        }
+        
+        #video {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: cover;
+        }
+        
+        .scan-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: none;
+        }
+        
+        .scan-line {
+            width: 90%;
+            height: 50px;
+            background: rgba(46, 204, 113, 0.2);
+            border-top: 2px solid #2ecc71;
+            border-bottom: 2px solid #2ecc71;
+            position: relative;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { background: rgba(46, 204, 113, 0.2); }
+            50% { background: rgba(46, 204, 113, 0.4); }
+            100% { background: rgba(46, 204, 113, 0.2); }
+        }
+        
+        .scan-line::before, .scan-line::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #2ecc71;
+        }
+        
+        .scan-line::before {
+            top: -3px;
+            left: -3px;
+            border-right: none;
+            border-bottom: none;
+        }
+        
+        .scan-line::after {
+            top: -3px;
+            right: -3px;
+            border-left: none;
+            border-bottom: none;
+        }
+        
+        .scan-hint {
+            color: white;
+            margin-top: 10px;
+            text-align: center;
+            font-size: 0.9rem;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        
+        .result-container {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+            flex-grow: 1;
+        }
+        
+        .result-title {
+            color: #2c3e50;
+            font-size: 1.4rem;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ecf0f1;
+            display: flex;
+            align-items: center;
+        }
+        
+        .result-title i {
+            margin-right: 10px;
+            color: #3498db;
+        }
+        
+        .business-name {
+            font-size: 1.3rem;
+            color: #2c3e50;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .business-code-container {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f1f8ff;
+            border-radius: 8px;
+        }
+        
+        .code-label {
+            font-weight: bold;
+            color: #2c3e50;
+            margin-right: 15px;
+            white-space: nowrap;
+        }
+        
+        .business-code {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #e74c3c;
+            letter-spacing: 2px;
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .btn {
+            flex: 1;
+            padding: 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .btn i {
+            margin-right: 8px;
+        }
+        
+        .btn-start {
+            background: #2ecc71;
+            color: white;
+        }
+        
+        .btn-stop {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .btn-start:hover, .btn-start:active {
+            background: #27ae60;
+        }
+        
+        .btn-stop:hover, .btn-stop:active {
+            background: #c0392b;
+        }
+        
+        .status {
+            text-align: center;
+            margin-top: 15px;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            min-height: 20px;
+        }
+        
+        .status.active {
+            color: #2ecc71;
+        }
+        
+        .status.error {
+            color: #e74c3c;
+        }
+        
+        .debug {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 0.8rem;
+            max-height: 100px;
+            overflow-y: auto;
+            display: none;
+        }
+        
+        .debug-toggle {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        
+        .info {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 15px;
+            color: white;
+            margin-top: 20px;
+            font-size: 0.9rem;
+        }
+        
+        .info h3 {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .info h3 i {
+            margin-right: 8px;
+        }
+        
+        .info ul {
+            padding-left: 20px;
+        }
+        
+        .info li {
+            margin-bottom: 8px;
+        }
+        
+        @media (max-width: 768px) {
+            body {
+                padding: 15px;
+            }
+            
+            .camera-container {
+                height: 350px;
+            }
+            
+            .header h1 {
+                font-size: 1.5rem;
+            }
+            
+            .business-name {
+                font-size: 1.1rem;
+                padding: 12px;
+            }
+            
+            .business-code {
+                font-size: 1.5rem;
+            }
+            
+            .btn {
+                padding: 12px;
+                font-size: 0.9rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 1.3rem;
+            }
+            
+            .camera-container {
+                height: 300px;
+            }
+            
+            .controls {
+                flex-direction: column;
+            }
+        }
+    </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="header">
+        <h1><i class="fas fa-university"></i> 邮储银行柜面业务OCR识别</h1>
+        <p>将摄像头对准业务名称，自动识别并显示对应编号</p>
+    </div>
+    
+    <div class="camera-container">
+        <video id="video" autoplay playsinline></video>
+        <div class="scan-overlay">
+            <div class="scan-line"></div>
+            <div class="scan-hint">请将业务名称对准扫描框内</div>
+        </div>
+    </div>
+    
+    <div class="result-container">
+        <div class="result-title">
+            <i class="fas fa-search"></i> 识别结果
+        </div>
+        
+        <div class="business-name" id="businessName">
+            等待识别...
+        </div>
+        
+        <div class="business-code-container">
+            <div class="code-label">柜面业务编号：</div>
+            <div class="business-code" id="businessCode">------</div>
+        </div>
+        
+        <div class="status" id="status">
+            准备就绪，点击"开始识别"按钮
+        </div>
+        
+        <div id="debugInfo" class="debug"></div>
+        <button class="debug-toggle" onclick="toggleDebug()">显示/隐藏调试信息</button>
+        
+        <div class="controls">
+            <button class="btn btn-start" id="startBtn">
+                <i class="fas fa-play-circle"></i> 开始识别
+            </button>
+            <button class="btn btn-stop" id="stopBtn" disabled>
+                <i class="fas fa-stop-circle"></i> 停止识别
+            </button>
+        </div>
+    </div>
+    
+    <div class="info">
+        <h3><i class="fas fa-info-circle"></i> 使用说明</h3>
+        <ul>
+            <li>点击"开始识别"按钮启动摄像头和OCR识别</li>
+            <li>将摄像头对准邮储银行柜面业务名称（可打印或屏幕显示）</li>
+            <li>识别框会自动识别业务名称并显示对应的编号</li>
+            <li>无需拍照，实时动态识别，移动摄像头即可更新识别结果</li>
+            <li>支持识别380种邮储银行柜面业务名称</li>
+            <li>识别速度优化，专为移动设备设计</li>
+        </ul>
+    </div>
+
+    <!-- 引入Tesseract.js OCR库 -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.0/dist/tesseract.min.js"></script>
+    
+    <script>
+        // 邮储银行柜面业务数据
+        const businessData = {
+            "柜员强制签退": "010103",
+            "柜员密码修改": "010201",
+            "柜员签到/签退登记簿查询": "019003",
+            "柜员交易流水查询": "019005",
+            "授权查询": "019008",
+            "机构签退": "020102",
+            "机构信息查询及维护": "020205",
+            "网点信息查询": "029001",
+            "摘要信息查询": "040207",
+            "凭证补打": "050101",
+            "ITM稽核补拍": "050105",
+            "联网核查": "050108",
+            "自动化用印-手工用印登记": "050202",
+            "线下手工用印登记-线下手工用印申请": "050210",
+            "自动化用印-人工授权用印申请": "050298",
+            "记账参数信息查询": "060114",
+            "智能箱包信息查询": "060126",
+            "机构交易量统计信息查询": "060127",
+            "交易取消记录信息查询": "060128",
+            "网点待处理任务查询": "060129",
+            "网点箱包历史流转记录查询": "060130",
+            "网点作业时间维护": "060131",
+            "尾箱维护": "060201",
+            "尾箱领用": "060202",
+            "尾箱上缴": "060203",
+            "尾箱维护查询": "060204",
+            "柜员轧账": "060205",
+            "机构轧账": "060206",
+            "强行轧账查询": "060207",
+            "尾箱查询": "060209",
+            "缴拨调剂查询": "060210",
+            "单据补打/查询": "060211",
+            "机构轧账寄库装箱": "060215",
+            "柜员尾箱现金余额尾数查询": "060216",
+            "柜员领用/上缴现金": "060301",
+            "网点拨款请求/取消": "060302",
+            "网点收到现金": "060303",
+            "网点缴款": "060304",
+            "现金特殊需求预约/查询": "060307",
+            "现金特殊需求预约修改（核实）/核销": "060308",
+            "残损币兑换": "060309",
+            "网点库存余额结构维护": "060310",
+            "网点长短款事项": "060311",
+            "网点长短款登记簿": "060313",
+            "网点假币收缴录入/修改/删除": "060321",
+            "网点假币收缴复核": "060322",
+            "网点假币收缴记录查询": "060323",
+            "假币代保管登记簿": "060327",
+            "假币库存明细登记簿查询": "060328",
+            "网点联机冲正、差错调整长短款查询": "060379",
+            "网点收到汇兑缴款": "060381",
+            "网点下拨汇兑款": "060383",
+            "柜员现金调剂": "060385",
+            "网点上缴装箱": "060387",
+            "柜员领/缴重要单证": "060401",
+            "网点重要单证请领/取消": "060402",
+            "网点收到重要单证": "060403",
+            "网点上缴重要单证": "060404",
+            "重要单证作废": "060407",
+            "重要单证登记簿查询": "060409",
+            "柜员重要单证调剂": "060410",
+            "移动展业尾箱查询": "060502",
+            "移动展业收到上缴重要单证": "060503",
+            "移动展业柜员轧账": "060505",
+            "自助银行尾箱轧账": "060601",
+            "自助银行尾箱查询": "060603",
+            "自助设备现金领用/上缴": "060604",
+            "自助设备重要单证领缴": "060607",
+            "自助银行重要单证登记簿查询": "060612",
+            "自助银行长短款事项": "060614",
+            "自助银行长短款登记簿": "060615",
+            "自助设备长款转账付出取消": "060616",
+            "自助设备加钞记录查询": "060617",
+            "自助银行余额查询": "060618",
+            "网点纪念币核查结果查询/解锁": "060802",
+            "纪念币预约/兑换信息查询": "060804",
+            "纪念币库存登记薄查询": "060807",
+            "全部导出查询下载": "060901",
+            "名单数据查询": "070202",
+            "反诈名单查询": "070203",
+            "客户信息录入/修改": "110101",
+            "客户信息管理": "110102",
+            "客户信息查询": "110104",
+            "客户风险评估": "110106",
+            "强化尽职调查": "110107",
+            "修改户名/证件登记簿查询": "110109",
+            "客户信息待核实标识取消": "110112",
+            "手机号码统一视图管理": "110113",
+            "客户三要素修改": "110116",
+            "手工同步信息": "110190",
+            "一键绑卡": "110202",
+            "查询引荐营销线索": "110302",
+            "快签手活动": "110303",
+            "综合开户": "210101",
+            "行内存款": "210102",
+            "行内取款": "210103",
+            "介质迁移": "210104",
+            "综合销户": "210105",
+            "柜面他行卡取款": "210106",
+            "绿卡通一本通定活互转": "210107",
+            "个人大额存单开户": "210109",
+            "个人大额存单子账户支取/销户": "210110",
+            "大额存单产品信息查询": "210112",
+            "一键签约": "210124",
+            "一键解约": "210125",
+            "一键平移": "210126",
+            "一键查询": "210127",
+            "新市民认证": "210128",
+            "一键修改": "210130",
+            "同步加办关系": "210133",
+            "定期转定期": "210134",
+            "综合销户（试点）": "210136",
+            "账户激活": "210137",
+            "行业应用子账户查询": "210202",
+            "密码重置": "210305",
+            "挂失及后续处理": "210309",
+            "社保卡医保账户解挂失": "210310",
+            "社保卡医保账户密码重置": "210311",
+            "社保卡医保账户更改密印": "210312",
+            "止付": "210401",
+            "解止付": "210402",
+            "冻结/解冻结": "210403",
+            "扣划（司法）": "210406",
+            "可疑凭证解锁定": "210409",
+            "手工事项取款/销户": "210410",
+            "开立定期存单质押业务证明书（存单止付）": "210412",
+            "撤销定期存单质押业务证明书（存单解止付）": "210413",
+            "来账状态查询": "210427",
+            "免费账户查询": "210433",
+            "代理人代理开户信息查询": "210438",
+            "非实时转账撤销": "210439",
+            "账户限制非柜面交易": "210450",
+            "冲正": "210601",
+            "取消": "210602",
+            "现金汇款公司账户交易取消": "210632",
+            "补登折/对账簿": "210701",
+            "打印压缩明细": "210702",
+            "随机换/折/单": "210705",
+            "重新写磁": "210706",
+            "加办密印": "210801",
+            "更改密印": "210802",
+            "撤销密印": "210803",
+            "开立个人存款证明": "210901",
+            "撤销个人存款证明": "210902",
+            "个人存款证明登记簿查询和补打印": "210904",
+            "账户升级/降级": "211001",
+            "账户绑定关系设置": "211002",
+            "I类账户批量降级": "211003",
+            "账户绑定关系查询": "211005",
+            "II类账户消费/缴费限额修改": "211006",
+            "无介质II/III类账户身份确认": "211007",
+            "账户加办关系查询与强制撤销": "211011",
+            "强制销户": "211102",
+            "非柜面限制交易解除": "211103",
+            "一人多账户合理性原因登记": "211104",
+            "多账户/多客户核实情况查询": "211105",
+            "借记卡安全锁设置": "211107",
+            "账户停用": "211108",
+            "账户非柜面支付限额设置": "211109",
+            "账户非柜面限额调整历史记录查询": "211114",
+            "账户快捷支付限额设置": "211120",
+            "自助交易设置": "211201",
+            "自助设备可疑交易查询": "211207",
+            "批量开定制卡": "211303",
+            "批量处理结果查询": "211309",
+            "批量开户未领介质对应关系查询": "211312",
+            "批量开户": "211316",
+            "批量文件编辑工具": "211317",
+            "批量联网核查": "211318",
+            "批量领介质": "211323",
+            "可疑名单录入/删除": "211401",
+            "可疑名单查询": "211404",
+            "交易拦截查询功能": "211405",
+            "开立个人养老金账户": "211501",
+            "养老金账户缴存": "211502",
+            "养老金账户支取": "211503",
+            "养老金账户转移申请": "211505",
+            "养老金账户转移取消": "211506",
+            "养老金账户转移处理": "211507",
+            "税延凭证打印": "211508",
+            "养老金账户注销": "211509",
+            "养老金账户激活/密码重置": "211510",
+            "养老金账户缴存撤回": "211512",
+            "账户风险等级人工评定": "211601",
+            "账户回访任务处理": "211605",
+            "存续期账户识别待办任务处理": "211607",
+            "账户存续期识别情况统计表": "211609",
+            "账户回访情况统计表": "211610",
+            "个人账户评级白名单维护": "211611",
+            "根据账号查短信加办关系": "212006",
+            "交易日流水查询": "212007",
+            "账户变动通知退费": "212011",
+            "根据账号查账户变动通知历史变更记录": "212012",
+            "开销户登记簿查询": "219001",
+            "客户资料变更登记薄查询": "219002",
+            "挂失登记簿查询": "219003",
+            "司法止付/冻结登记簿": "219004",
+            "止付解止付登记簿查询": "219005",
+            "柜员差错交易登记簿查询": "219006",
+            "同号换（补）卡登记簿查询": "219008",
+            "扣划登记簿查询": "219009",
+            "账户限制服务登记簿查询": "219016",
+            "账户升降级登记簿查询": "219018",
+            "客户业务办理情况查询": "219101",
+            "新旧账（卡）号及归属地查询": "219102",
+            "账务类交易流水查询": "219104",
+            "根据账号/卡号查询非账务明细": "219106",
+            "非账务类交易流水查询": "219107",
+            "柜员末笔账务类交易查询": "219108",
+            "报表查询打印": "219109",
+            "收欠费明细查询": "219110",
+            "柜员交易日志查询": "219111",
+            "客户账户信息查询": "219114",
+            "非实时转账查询": "219115",
+            "电子现金账户明细查询": "219205",
+            "查询账户基本信息": "219206",
+            "查询账户明细": "219208",
+            "系统退费明细查询": "219210",
+            "定期账户转存明细查询": "219212",
+            "跨境POS消费日累计系统限额查询": "219213",
+            "副卡信息查询（客户、内部）": "219217",
+            "副卡明细查询（客户、内部）": "219218",
+            "人行小额支付系统代收付业务交易信息查询": "219219",
+            "已故客户信息及明细信息": "219224",
+            "一键账户查询": "219225",
+            "司法查询": "219305",
+            "批量司法查询结果下载": "219308",
+            "电子现金卡退卡": "220111",
+            "圈提": "220118",
+            "同号换卡": "220201",
+            "主卡撤销副卡": "220203",
+            "副卡启用/停用": "220204",
+            "换卡": "220208",
+            "同号换（补）卡申请": "220209",
+            "同号补卡": "220210",
+            "同号/定制卡号凭证作废": "220211",
+            "撤销折/对账簿": "220212",
+            "卡撤销": "220213",
+            "卡加办补发对账簿": "220214",
+            "柜面他行卡查询": "220216",
+            "吞没卡/废卡登记": "220301",
+            "吞没卡/废卡领取": "220302",
+            "吞没卡/废卡查询": "220303",
+            "吞没卡/废卡上缴": "220304",
+            "吞没卡/废卡上缴清单打印": "220305",
+            "吞没卡/废卡登记簿查询": "220306",
+            "绿卡通卡内约定转账定制": "220601",
+            "绿卡通约定转账变更/撤销/查询": "220602",
+            "电子银行账户强制撤销": "230101",
+            "电子银行客户查询": "230103",
+            "电子银行渠道关闭": "230104",
+            "电子银行账户撤销": "230201",
+            "电子银行认证工具变更": "230301",
+            "电子银行认证工具换发": "230302",
+            "电子银行UK证书补发": "230303",
+            "电子银行密码重置": "230401",
+            "手机银行设备绑定码申请": "230407",
+            "电子银行信息同步/强制解约": "230409",
+            "银联无卡支付签约信息查询": "230501",
+            "钱包开立": "250101",
+            "个人钱包销户": "250103",
+            "数字货币兑回": "250107",
+            "钱包基本信息查询": "250119",
+            "钱包信息司法查询": "250301",
+            "钱包交易明细司法查询": "250302",
+            "钱包紧急止付解除": "250305",
+            "钱包司法冻结": "250307",
+            "汇款": "310101",
+            "现金汇款公司账户": "310103",
+            "预约账户汇款申请": "310120",
+            "预约账户汇款修改/撤销": "310121",
+            "预约账户汇款查询": "310122",
+            "退汇挂账核销": "310130",
+            "跨行汇款登记簿": "310190",
+            "大小额往账交易明细查询": "310191",
+            "跨行资金归集协议签约": "310201",
+            "手机号收款账户管理": "310302",
+            "按址取款通知单打印记录查询": "360101",
+            "按址汇款短信发送查询/重发": "360103",
+            "按址汇款": "360104",
+            "密码汇款": "360105",
+            "向商户号转账汇款": "360106",
+            "汇票兑付": "360107",
+            "通知单连续打印": "360108",
+            "通知单补打": "360109",
+            "投递清单浏览/打印": "360110",
+            "汇兑凭证补打": "360111",
+            "商户余额查询": "360201",
+            "商务汇款清单查询": "360206",
+            "收到商户资金": "360210",
+            "商户收汇收据开发": "360211",
+            "置妥前信息确认": "360214",
+            "收据置妥": "360215",
+            "汇票止付": "360301",
+            "汇票详细信息查询": "360304",
+            "接收专号查询": "360305",
+            "特殊业务登记薄": "360308",
+            "改汇": "360309",
+            "取款通知单挂失": "360310",
+            "撤销取款通知单挂失": "360311",
+            "邮政汇兑短信服务": "360312",
+            "客户申请退汇": "360314",
+            "无法兑付退汇": "360315",
+            "密码汇款密码挂失": "360316",
+            "邮政汇兑密码重置": "360317",
+            "收汇信息/附加业务更正": "360403",
+            "汇款取消": "360404",
+            "汇兑机构查询": "360701",
+            "汇兑末笔流水查询": "360703",
+            "信用卡现金存款": "410101",
+            "信用卡现金转账还款": "410102",
+            "信用卡账户转账还款": "410103",
+            "信用卡取现": "410104",
+            "信用卡转出转账": "410105",
+            "信用卡账户余额查询": "410201",
+            "信用卡账单头查询": "410202",
+            "信用卡自动还款加办关系查询": "410203",
+            "信用卡卡列表查询": "410204",
+            "信用卡卡详细信息查询": "410205",
+            "信用卡手机号码修改": "410301",
+            "信用卡自动还款加办撤销": "410303",
+            "信用卡激活": "410305",
+            "信用卡交易密码重置": "410308",
+            "信用卡小额免密免签功能设置": "410310",
+            "新保承保": "610001",
+            "我的投保单": "610002",
+            "我的双录": "610003",
+            "联机非实时保单录入": "610071",
+            "联机非实时保单修改及取消": "610072",
+            "保单信息查询": "610073",
+            "代收业务三方协议管理": "610076",
+            "交易代码查询": "610122",
+            "理财类业务签约": "620101",
+            "资金账号追加": "620102",
+            "个人投资者客户资料查询": "620105",
+            "个人合格投资者认定": "620108",
+            "资金账号变更": "620109",
+            "资金账号与身份证不一致变更": "620114",
+            "特殊资金账号加办": "620115",
+            "登记簿查询": "620117",
+            "财产证明联动查询": "620123",
+            "营业参数下载": "620126",
+            "资产归并": "620128",
+            "交易流水查询": "620129",
+            "历史交易明细查询": "620130",
+            "报表下载": "620131",
+            "手续费参数查询": "620134",
+            "理财类异常签约客户查询": "620141",
+            "基金赎回": "620202",
+            "网点代理基金品种查询": "620265",
+            "理财产品购买（个人）": "620303",
+            "理财产品赎回（个人）": "620305",
+            "储蓄国债（凭证式）提前兑取（新）": "620402",
+            "凭证国债取消购买交易": "620404",
+            "凭证式国债出单": "620405",
+            "凭证式国债收单": "620406",
+            "储蓄国债（凭证式）挂失": "620420",
+            "储蓄国债（凭证式）挂失补发": "620422",
+            "储蓄国债(电子式)提前兑付": "620504",
+            "个人当日/次日预约提金信息查询": "630611",
+            "变更银行结算账号（个人）": "640203",
+            "存管客户解约（个人）": "640204",
+            "个人用户签约": "710101",
+            "个人用户签约查询": "710102",
+            "个人用户签约修改": "710104",
+            "个人用户解约": "710105",
+            "缴费": "710201",
+            "发票/收据补打": "710206",
+            "入账资金明细查询": "710213",
+            "入账资金确认": "710214",
+            "交易对手信息查询": "710305",
+            "委托方签约信息查询": "710402",
+            "优待证补换卡信息登记": "710927",
+            "山东社保卡维护交易": "710938",
+            "通用委托方信息查询": "720302",
+            "业主开户": "720801",
+            "文件加密密码申请": "730119",
+            "缴费结果查询": "770302",
+            "待查补录类": "770303",
+            "任务汇总查询": "990105"
+        };
+        
+        // DOM元素
+        const video = document.getElementById('video');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const businessNameEl = document.getElementById('businessName');
+        const businessCodeEl = document.getElementById('businessCode');
+        const statusEl = document.getElementById('status');
+        const debugInfoEl = document.getElementById('debugInfo');
+        
+        // 状态变量
+        let isScanning = false;
+        let stream = null;
+        let worker = null;
+        let canvas = null;
+        let ctx = null;
+        let scanInterval = null;
+        let debugMode = false;
+        
+        // 调试日志
+        function debugLog(message) {
+            if (!debugMode) return;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            debugInfoEl.innerHTML += `[${timestamp}] ${message}<br>`;
+            debugInfoEl.scrollTop = debugInfoEl.scrollHeight;
+        }
+        
+        // 切换调试模式
+        function toggleDebug() {
+            debugMode = !debugMode;
+            debugInfoEl.style.display = debugMode ? 'block' : 'none';
+        }
+        
+        // 初始化Tesseract OCR
+        async function initOCR() {
+            try {
+                statusEl.textContent = '正在加载OCR引擎...';
+                debugLog('开始初始化OCR引擎');
+                
+                // 创建Tesseract worker
+                worker = await Tesseract.createWorker('chi_sim');
+                debugLog('OCR worker创建成功');
+                
+                // 设置OCR参数
+                await worker.setParameters({
+                    tessedit_pageseg_mode: '7', // 单行文本模式
+                });
+                debugLog('OCR参数设置完成');
+                
+                statusEl.textContent = 'OCR引擎准备就绪';
+                debugLog('OCR引擎初始化完成');
+            } catch (error) {
+                console.error('OCR初始化失败:', error);
+                debugLog('OCR初始化失败: ' + error.message);
+                statusEl.textContent = 'OCR初始化失败，请刷新页面重试';
+                statusEl.className = 'status error';
+            }
+        }
+        
+        // 启动摄像头
+        async function startCamera() {
+            try {
+                statusEl.textContent = '正在请求摄像头权限...';
+                debugLog('开始请求摄像头权限');
+                
+                // 请求摄像头访问权限
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 640 },
+                        height: { ideal: 480 }
+                    },
+                    audio: false
+                });
+                
+                video.srcObject = stream;
+                debugLog('摄像头权限已获取，开始播放视频');
+                
+                // 等待视频加载
+                await new Promise((resolve) => {
+                    video.onloadeddata = () => {
+                        video.play();
+                        debugLog('视频播放开始');
+                        resolve();
+                    };
+                });
+                
+                statusEl.textContent = '摄像头已启动，开始识别...';
+                statusEl.className = 'status active';
+                debugLog('摄像头启动成功');
+                
+                // 创建画布用于OCR处理
+                canvas = document.createElement('canvas');
+                ctx = canvas.getContext('2d');
+                debugLog('画布创建完成');
+                
+                // 开始OCR扫描
+                startScanning();
+            } catch (error) {
+                console.error('摄像头启动失败:', error);
+                debugLog('摄像头启动失败: ' + error.message);
+                statusEl.textContent = '摄像头启动失败，请确保已授予摄像头权限';
+                statusEl.className = 'status error';
+            }
+        }
+        
+        // 开始OCR扫描
+        function startScanning() {
+            if (!worker || !stream) {
+                debugLog('无法开始扫描: worker或stream未初始化');
+                return;
+            }
+            
+            isScanning = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            debugLog('开始OCR扫描');
+            
+            // 开始扫描循环
+            scanLoop();
+        }
+        
+        // OCR扫描循环
+        async function scanLoop() {
+            if (!isScanning) {
+                debugLog('扫描已停止');
+                return;
+            }
+            
+            try {
+                // 设置扫描区域
+                const scanWidth = video.videoWidth * 0.8;
+                const scanHeight = 60;
+                const scanX = (video.videoWidth - scanWidth) / 2;
+                const scanY = (video.videoHeight - scanHeight) / 2;
+                
+                // 设置画布尺寸
+                canvas.width = scanWidth;
+                canvas.height = scanHeight;
+                
+                // 从视频中捕获扫描区域的帧
+                ctx.drawImage(video, scanX, scanY, scanWidth, scanHeight, 0, 0, scanWidth, scanHeight);
+                debugLog('捕获视频帧完成');
+                
+                // 使用Tesseract进行OCR识别
+                debugLog('开始OCR识别...');
+                const result = await worker.recognize(canvas);
+                const text = result.data.text.trim();
+                debugLog('OCR识别完成: ' + text);
+                
+                // 处理识别结果
+                processOCRResult(text);
+                
+                // 继续下一帧
+                scanInterval = setTimeout(scanLoop, 500);
+            } catch (error) {
+                console.error('OCR识别错误:', error);
+                debugLog('OCR识别错误: ' + error.message);
+                
+                // 继续下一帧，即使出错
+                if (isScanning) {
+                    scanInterval = setTimeout(scanLoop, 1000);
+                }
+            }
+        }
+        
+        // 处理OCR识别结果
+        function processOCRResult(text) {
+            if (!text || text.length === 0) {
+                businessNameEl.textContent = '未识别到文字';
+                businessCodeEl.textContent = '------';
+                debugLog('未识别到文字');
+                return;
+            }
+            
+            debugLog('原始识别结果: "' + text + '"');
+            
+            // 清理文本
+            const cleanText = text.replace(/\s+/g, '').replace(/[^\u4e00-\u9fa5a-zA-Z0-9\/\-（）]/g, '');
+            debugLog('清理后文本: "' + cleanText + '"');
+            
+            // 在业务数据中查找匹配项
+            let bestMatch = null;
+            
+            // 先尝试完全匹配
+            if (businessData[cleanText]) {
+                bestMatch = { name: cleanText, code: businessData[cleanText] };
+                debugLog('完全匹配: ' + cleanText);
+            } else {
+                // 尝试部分匹配
+                for (const [name, code] of Object.entries(businessData)) {
+                    // 如果业务名称包含识别文本
+                    if (name.includes(cleanText)) {
+                        bestMatch = { name, code };
+                        debugLog('部分匹配: ' + cleanText + ' -> ' + name);
+                        break;
+                    }
+                    
+                    // 如果识别文本包含业务名称的关键部分
+                    if (cleanText.length > 3 && name.includes(cleanText.substring(0, 3))) {
+                        bestMatch = { name, code };
+                        debugLog('关键字匹配: ' + cleanText + ' -> ' + name);
+                        break;
+                    }
+                }
+            }
+            
+            // 显示结果
+            if (bestMatch) {
+                businessNameEl.textContent = bestMatch.name;
+                businessCodeEl.textContent = bestMatch.code;
+                statusEl.textContent = '识别成功';
+                statusEl.className = 'status active';
+                debugLog('匹配成功: ' + bestMatch.name + ' -> ' + bestMatch.code);
+            } else {
+                businessNameEl.textContent = `未找到匹配项: "${cleanText}"`;
+                businessCodeEl.textContent = '------';
+                statusEl.textContent = '未找到匹配的业务名称';
+                statusEl.className = 'status';
+                debugLog('未找到匹配项');
+            }
+        }
+        
+        // 停止扫描
+        function stopScanning() {
+            isScanning = false;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            
+            if (scanInterval) {
+                clearTimeout(scanInterval);
+                scanInterval = null;
+                debugLog('扫描定时器已清除');
+            }
+            
+            // 停止摄像头
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                video.srcObject = null;
+                stream = null;
+                debugLog('摄像头已停止');
+            }
+            
+            statusEl.textContent = '已停止识别';
+            statusEl.className = 'status';
+            debugLog('扫描已停止');
+        }
+        
+        // 初始化
+        window.addEventListener('DOMContentLoaded', async () => {
+            debugLog('页面加载完成');
+            
+            // 初始化OCR
+            await initOCR();
+            
+            // 按钮事件监听
+            startBtn.addEventListener('click', async () => {
+                debugLog('开始识别按钮被点击');
+                await startCamera();
+            });
+            
+            stopBtn.addEventListener('click', () => {
+                debugLog('停止识别按钮被点击');
+                stopScanning();
+            });
+            
+            // 页面卸载时清理资源
+            window.addEventListener('beforeunload', () => {
+                debugLog('页面即将卸载');
+                stopScanning();
+                if (worker) {
+                    worker.terminate();
+                    debugLog('OCR worker已终止');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
