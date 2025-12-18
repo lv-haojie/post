@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>摄像头OCR文字识别</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+        }
+
+        body {
+            background: #f8f9fa;
+            min-height: 100vh;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .title {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        /* 摄像头预览区域 */
+        .camera-container {
+            width: 100%;
+            max-width: 400px;
+            height: 300px;
+            border: 2px solid #007aff;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        #camera-preview {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* 镜像显示，符合摄像头使用习惯 */
+        }
+
+        .camera-mask {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            height: 60%;
+            border: 2px dashed #fff;
+            border-radius: 8px;
+            pointer-events: none;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+        }
+
+        /* 按钮样式 */
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            width: 100%;
+            max-width: 400px;
+        }
+
+        .control-btn {
+            flex: 1;
+            padding: 12px 0;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .start-btn {
+            background: #007aff;
+            color: #fff;
+        }
+
+        .start-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .ocr-btn {
+            background: #34c759;
+            color: #fff;
+        }
+
+        .ocr-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        /* 结果区域 */
+        .result-container {
+            width: 100%;
+            max-width: 400px;
+            background: #fff;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .result-title {
+            font-size: 16px;
+            color: #333;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .result-content {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.5;
+            min-height: 100px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .loading {
+            color: #007aff;
+            font-size: 14px;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        .error {
+            color: #ff3b30;
+            font-size: 14px;
+            text-align: center;
+            margin: 10px 0;
+        }
+
+        /* 隐藏的canvas，用于截取摄像头帧 */
+        #capture-canvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1 class="title">摄像头实时OCR文字识别</h1>
+
+    <!-- 摄像头预览区域 -->
+    <div class="camera-container">
+        <video id="camera-preview" autoplay playsinline></video>
+        <div class="camera-mask"></div> <!-- 识别框提示 -->
+    </div>
+
+    <!-- 控制按钮 -->
+    <div class="btn-group">
+        <button class="control-btn start-btn" id="start-camera">开启摄像头</button>
+        <button class="control-btn ocr-btn" id="do-ocr" disabled>拍照识别</button>
+    </div>
+
+    <!-- 加载/错误提示 -->
+    <div id="status"></div>
+
+    <!-- OCR结果展示 -->
+    <div class="result-container">
+        <div class="result-title">识别结果：</div>
+        <div class="result-content" id="ocr-result">请开启摄像头并点击「拍照识别」</div>
+    </div>
+
+    <!-- 隐藏的canvas，用于截取视频帧 -->
+    <canvas id="capture-canvas"></canvas>
+
+    <!-- 引入Tesseract.js（前端OCR核心库） -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.0.2/dist/tesseract.min.js"></script>
+    <script>
+        // 核心变量
+        const cameraPreview = document.getElementById('camera-preview');
+        const startCameraBtn = document.getElementById('start-camera');
+        const doOcrBtn = document.getElementById('do-ocr');
+        const captureCanvas = document.getElementById('capture-canvas');
+        const ocrResult = document.getElementById('ocr-result');
+        const statusText = document.getElementById('status');
+        let stream = null; // 摄像头流
+
+        // 初始化Tesseract OCR引擎（支持中英双语）
+        const ocrWorker = Tesseract.createWorker({
+            logger: m => {
+                // 显示加载进度
+                if (m.status === 'loading tesseract core') {
+                    statusText.innerHTML = `<div class="loading">正在加载OCR核心库...</div>`;
+                } else if (m.status === 'loading language data') {
+                    statusText.innerHTML = `<div class="loading">正在加载中英文字库(${Math.round(m.progress*100)}%)...</div>`;
+                } else if (m.status === 'initializing tesseract') {
+                    statusText.innerHTML = `<div class="loading">OCR引擎初始化中...</div>`;
+                }
+            }
+        });
+
+        // 页面加载完成后初始化OCR引擎
+        window.addEventListener('DOMContentLoaded', async () => {
+            await ocrWorker.load();
+            await ocrWorker.loadLanguage('chi_sim+eng'); // 加载简体中文+英文语言包
+            await ocrWorker.initialize('chi_sim+eng');
+            statusText.innerHTML = ''; // 清空加载提示
+        });
+
+        // 开启摄像头按钮点击事件
+        startCameraBtn.addEventListener('click', async () => {
+            try {
+                // 检查浏览器是否支持WebRTC
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('您的浏览器不支持摄像头调用，请升级浏览器（如Chrome/Edge）');
+                }
+
+                statusText.innerHTML = `<div class="loading">正在请求摄像头权限...</div>`;
+                
+                // 调用后置摄像头（移动端优先）
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment', // 后置摄像头（user为前置）
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false // 不需要音频
+                });
+
+                // 将摄像头流绑定到video标签
+                cameraPreview.srcObject = stream;
+                
+                // 按钮状态更新
+                startCameraBtn.disabled = true;
+                doOcrBtn.disabled = false;
+                startCameraBtn.textContent = '摄像头已开启';
+                statusText.innerHTML = '';
+                ocrResult.textContent = '请将识别内容对准中间框，点击「拍照识别」';
+
+            } catch (err) {
+                // 权限拒绝/设备不支持等错误处理
+                statusText.innerHTML = `<div class="error">错误：${err.message}</div>`;
+                if (err.name === 'NotAllowedError') {
+                    statusText.innerHTML += `<div class="error">请允许浏览器访问摄像头权限（设置-权限-摄像头）</div>`;
+                }
+            }
+        });
+
+        // 拍照识别按钮点击事件
+        doOcrBtn.addEventListener('click', async () => {
+            try {
+                statusText.innerHTML = `<div class="loading">正在截取画面并识别...</div>`;
+                ocrResult.textContent = '识别中，请稍候...';
+                doOcrBtn.disabled = true;
+
+                // 1. 截取摄像头当前帧到canvas
+                const videoWidth = cameraPreview.videoWidth;
+                const videoHeight = cameraPreview.videoHeight;
+                captureCanvas.width = videoWidth;
+                captureCanvas.height = videoHeight;
+                const ctx = captureCanvas.getContext('2d');
+                // 镜像绘制（因为video是镜像的）
+                ctx.scale(-1, 1);
+                ctx.drawImage(cameraPreview, -videoWidth, 0, videoWidth, videoHeight);
+
+                // 2. 调用OCR识别canvas中的图像
+                const { data: { text } } = await ocrWorker.recognize(
+                    captureCanvas,
+                    {
+                        // OCR配置：提高识别精度
+                        tessedit_char_whitelist: '', // 空表示识别所有字符，可自定义如：0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ一二三四五六七八九零甲乙丙丁
+                        tessedit_pageseg_mode: Tesseract.PSM.AUTO // 自动页面分割模式
+                    }
+                );
+
+                // 3. 显示识别结果
+                statusText.innerHTML = '';
+                ocrResult.textContent = text || '未识别到任何文字';
+                doOcrBtn.disabled = false;
+
+            } catch (err) {
+                statusText.innerHTML = `<div class="error">识别失败：${err.message}</div>`;
+                ocrResult.textContent = '识别失败，请重试';
+                doOcrBtn.disabled = false;
+            }
+        });
+
+        // 页面关闭时释放资源
+        window.addEventListener('beforeunload', async () => {
+            // 停止摄像头流
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+            // 销毁OCR引擎
+            await ocrWorker.terminate();
+        });
+    </script>
+</body>
+</html>
